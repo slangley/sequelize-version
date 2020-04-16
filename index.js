@@ -54,6 +54,8 @@ var defaults = {
   schema: '',
   namespace: null,
   sequelize: null,
+  contextId: null,
+  contextModel: null,
   exclude: [],
   tableUnderscored: true,
   underscored: true,
@@ -89,6 +91,9 @@ function Version(model, customOptions) {
   var prefix = options.prefix,
       suffix = options.suffix,
       namespace = options.namespace,
+      contextId = options.contextId,
+      contextModel = options.contextModel,
+      contextNamespace = options.contextNamespace,
       exclude = options.exclude,
       tableUnderscored = options.tableUnderscored,
       underscored = options.underscored;
@@ -104,6 +109,7 @@ function Version(model, customOptions) {
   var tableName = '' + (prefix ? '' + prefix + (tableUnderscored ? '_' : '') : '') + (model.options.tableName || model.name) + (suffix ? '' + (tableUnderscored ? '_' : '') + suffix : '');
   var versionFieldType = '' + attributePrefix + (underscored ? '_t' : 'T') + 'ype';
   var versionFieldId = '' + attributePrefix + (underscored ? '_i' : 'I') + 'd';
+  var versionContextId = '' + attributePrefix + (underscored ? '_c' : 'C') + 'ontextId';
   var versionFieldTimestamp = '' + attributePrefix + (underscored ? '_t' : 'T') + 'imestamp';
   var versionModelName = '' + capitalize(prefix) + capitalize(model.name);
 
@@ -130,8 +136,14 @@ function Version(model, customOptions) {
 
   var versionModel = sequelize.define(versionModelName, versionModelAttrs, versionModelOptions);
 
+  if (contextModel) {
+    versionModel.belongsTo(sequelize.model(options.contextModel), { foreignKey: versionContextId });
+  }
+
   hooks.forEach(function (hook) {
     model.addHook(hook, function (instanceData, _ref) {
+      var _versionAdditions;
+
       var transaction = _ref.transaction;
 
       var cls = namespace || Sequelize.cls;
@@ -147,10 +159,14 @@ function Version(model, customOptions) {
       var versionType = getVersionType(hook);
       var instancesData = toArray(instanceData);
 
-      var versionData = instancesData.map(function (data) {
-        var _Object$assign;
+      var versionAdditions = (_versionAdditions = {}, _defineProperty(_versionAdditions, versionFieldType, versionType), _defineProperty(_versionAdditions, versionFieldTimestamp, new Date()), _versionAdditions);
 
-        return Object.assign({}, clone(data), (_Object$assign = {}, _defineProperty(_Object$assign, versionFieldType, versionType), _defineProperty(_Object$assign, versionFieldTimestamp, new Date()), _Object$assign));
+      if (contextNamespace && contextId) {
+        versionAdditions[versionContextId] = contextNamespace.get(contextId);
+      }
+
+      var versionData = instancesData.map(function (data) {
+        return Object.assign({}, clone(data), versionAdditions);
       });
 
       return versionModel.bulkCreate(versionData, {

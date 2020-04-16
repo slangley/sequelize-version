@@ -50,6 +50,8 @@ const defaults = {
   schema: '',
   namespace: null,
   sequelize: null,
+  contextId: null,
+  contextModel: null,
   exclude: [],
   tableUnderscored: true,
   underscored: true,
@@ -89,6 +91,9 @@ function Version(model, customOptions) {
     prefix,
     suffix,
     namespace,
+    contextId,
+    contextModel,
+    contextNamespace,
     exclude,
     tableUnderscored,
     underscored,
@@ -108,6 +113,7 @@ function Version(model, customOptions) {
   }`;
   const versionFieldType = `${attributePrefix}${underscored ? '_t' : 'T'}ype`;
   const versionFieldId = `${attributePrefix}${underscored ? '_i' : 'I'}d`;
+  const versionContextId = `${attributePrefix}${underscored ? '_c' : 'C'}ontextId`;
   const versionFieldTimestamp = `${attributePrefix}${
     underscored ? '_t' : 'T'
   }imestamp`;
@@ -129,6 +135,7 @@ function Version(model, customOptions) {
     },
   };
 
+
   const cloneModelAttrs = cloneAttrs(model, attrsToClone, exclude);
   const versionModelAttrs = Object.assign({}, cloneModelAttrs, versionAttrs);
 
@@ -143,6 +150,12 @@ function Version(model, customOptions) {
     versionModelAttrs,
     versionModelOptions
   );
+
+  if (contextModel) {
+    versionModel.belongsTo(
+      sequelize.model(options.contextModel), {foreignKey: versionContextId}
+    );
+  }
 
   hooks.forEach(hook => {
     model.addHook(hook, (instanceData, { transaction }) => {
@@ -161,11 +174,17 @@ function Version(model, customOptions) {
       const versionType = getVersionType(hook);
       const instancesData = toArray(instanceData);
 
+      const versionAdditions = {
+        [versionFieldType]: versionType,
+        [versionFieldTimestamp]: new Date(),
+      };
+
+      if (contextNamespace && contextId) {
+        versionAdditions[versionContextId] = contextNamespace.get(contextId);
+      }
+
       const versionData = instancesData.map(data => {
-        return Object.assign({}, clone(data), {
-          [versionFieldType]: versionType,
-          [versionFieldTimestamp]: new Date(),
-        });
+        return Object.assign({}, clone(data), versionAdditions);
       });
 
       return versionModel.bulkCreate(versionData, {
